@@ -5,7 +5,7 @@
 namespace Seisundid.Migrations
 {
     /// <inheritdoc />
-    public partial class addedPood : Migration
+    public partial class addedPaevaGraafik : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)

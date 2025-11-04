@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Seisundid.Migrations
 {
     /// <inheritdoc />
-    public partial class addedPaevaGraafik : Migration
+    public partial class addedPood : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -34,8 +34,8 @@ namespace Seisundid.Migrations
                     Id = table.Column<int>(type: "int", nullable: false)
                         .Annotation("SqlServer:Identity", "1, 1"),
                     Paev = table.Column<int>(type: "int", nullable: false),
-                    AvatudAlates = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    AvatudKuni = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    AvatudAlates = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    AvatudKuni = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     PoodId = table.Column<int>(type: "int", nullable: false)
                 },
                 constraints: table =>

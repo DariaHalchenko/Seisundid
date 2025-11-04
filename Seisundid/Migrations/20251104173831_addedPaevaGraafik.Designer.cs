@@ -12,7 +12,7 @@ using Seisundid.Data;
 namespace Seisundid.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20251104105737_addedPaevaGraafik")]
+    [Migration("20251104173831_addedPaevaGraafik")]
     partial class addedPaevaGraafik
     {
         /// <inheritdoc />
@@ -34,11 +34,9 @@ namespace Seisundid.Migrations
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
                     b.Property<string>("AvatudAlates")
-                        .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("AvatudKuni")
-                        .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<int>("Paev")

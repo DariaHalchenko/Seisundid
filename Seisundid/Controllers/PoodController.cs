@@ -18,16 +18,45 @@ namespace Seisundid.Controllers
 
         // GET: api/pood
         [HttpGet]
-        public ActionResult<List<Pood>> GetPoodd()
+        public ActionResult<List<object>> GetPoodd()
         {
             var poed = _context.Poed.Include(p => p.Graafik).ToList();
-            return poed;
+
+            // Получаем текущее время и день недели 
+            var now = DateTime.Now;
+            var currentTime = now.TimeOfDay;
+            var currentDay = now.DayOfWeek;
+
+            // Формируем результат для каждого магазина
+            var result = poed.Select(p =>
+            {
+                // Определяем, открыт ли магазин в текущий момент
+                var isOpen = IsOpen(p, currentTime, currentDay);
+
+                return new
+                {
+                    p.Id,
+                    p.Nimi,
+                    TananePaev = currentDay.ToString(), // Текущий день недели 
+                    PraeguneAeg = new TimeSpan(currentTime.Hours, currentTime.Minutes, currentTime.Seconds)
+                                  .ToString(@"hh\:mm\:ss"), // Текущее время
+                    OnAvatud = isOpen, // Статус магазина: открыт или закрыт
+
+                    Graafik = p.Graafik.Select(g => new
+                    {
+                        g.Paev,
+                        g.AvatudAlates,
+                        g.AvatudKuni
+                    })
+                };
+            });
+
+            return Ok(result);
         }
 
-        // POST: api/pood/bulk
+        // POST: api/pood/save-many-poed
         [HttpPost("save-many-poed")]
         public ActionResult<List<Pood>> CreateMultiple([FromBody] List<Pood> newPoed)
-
         {
             foreach (var pood in newPoed)
             {
@@ -47,17 +76,12 @@ namespace Seisundid.Controllers
             return Ok(newPoed);
         }
 
-
         // Kontrollige, kas kõik poed on kindlal ajal avatud
         [HttpGet("check-time")]
         public ActionResult<List<string>> CheckByTime([FromQuery] TimeSpan time)
         {
-            // Saame kõik kauplused koos töögraafikuga 
-            var poodList = _context.Poed
-                .Include(p => p.Graafik)
-                .ToList();
+            var poodList = _context.Poed.Include(p => p.Graafik).ToList();
 
-            // Kontrollime iga poe puhul, kas see on määratud ajal avatud
             var results = poodList.Select(p =>
             {
                 bool open = p.Graafik.Any(g =>
@@ -76,12 +100,8 @@ namespace Seisundid.Controllers
         [HttpGet("check")]
         public ActionResult<List<string>> CheckByDayAndTime([FromQuery] DayOfWeek day, [FromQuery] TimeSpan time)
         {
-            // Saame kõik kauplused koos töögraafikuga
-            var poodList = _context.Poed
-                .Include(p => p.Graafik)
-                .ToList();
+            var poodList = _context.Poed.Include(p => p.Graafik).ToList();
 
-            // Kontrollime iga poe avatust määratud päeval ja kellaajal
             var results = poodList.Select(p =>
             {
                 var g = p.Graafik.FirstOrDefault(g => g.Paev == day);
@@ -101,7 +121,6 @@ namespace Seisundid.Controllers
         [HttpPost("{id}/add-hour")]
         public ActionResult<string> AddHour(int id)
         {
-
             // Leidke pood ID järgi koos graafikuga
             var pood = _context.Poed.Include(p => p.Graafik).FirstOrDefault(p => p.Id == id);
             if (pood == null)
@@ -109,20 +128,19 @@ namespace Seisundid.Controllers
                 return NotFound($"Pood ID={id} ei leitud.");
             }
 
-            bool wasOpen = pood.OnAvatud; // säilitame eelmise staatuse
+            bool wasOpen = IsOpen(pood, DateTime.Now.TimeOfDay, pood.TananePaev);
 
             // Lisame poe lahtiolekuajale 1 tunni
-            pood.PraeguneAeg = pood.PraeguneAeg.Add(TimeSpan.FromHours(1));
-
-            // Kui kell on üle 24:00, suurendame nädalapäeva
-            if (pood.PraeguneAeg.Hours >= 24)
+            var g = pood.Graafik.FirstOrDefault(g => g.Paev == pood.TananePaev);
+            if (g != null && TimeSpan.TryParse(g.AvatudKuni, out var kuni))
             {
-                pood.PraeguneAeg -= TimeSpan.FromHours(24);
-                pood.TananePaev = (DayOfWeek)(((int)pood.TananePaev + 1) % 7);
+                g.AvatudKuni = (kuni + TimeSpan.FromHours(1)).ToString();
+                _context.PaevaGraafiks.Update(g);
             }
 
-            // Uuendame poe seisundit
-            pood.OnAvatud = IsOpen(pood);
+            // praegune aeg = текущее время
+            pood.PraeguneAeg = DateTime.Now.TimeOfDay;
+            pood.OnAvatud = IsOpen(pood, pood.PraeguneAeg, pood.TananePaev);
 
             _context.Poed.Update(pood);
             _context.SaveChanges();
@@ -140,11 +158,14 @@ namespace Seisundid.Controllers
                 return NotFound($"Pood ID={id} ei leitud.");
             }
 
-            bool wasOpen = pood.OnAvatud;
+            bool wasOpen = IsOpen(pood, DateTime.Now.TimeOfDay, pood.TananePaev);
 
             // Suurendame nädalapäeva 1 võrra
             pood.TananePaev = (DayOfWeek)(((int)pood.TananePaev + 1) % 7);
-            pood.OnAvatud = IsOpen(pood);
+
+            // praegune aeg = текущее время
+            pood.PraeguneAeg = DateTime.Now.TimeOfDay;
+            pood.OnAvatud = IsOpen(pood, pood.PraeguneAeg, pood.TananePaev);
 
             _context.Poed.Update(pood);
             _context.SaveChanges();
@@ -153,18 +174,17 @@ namespace Seisundid.Controllers
         }
 
         // meetod poe avatuse kontrollimiseks
-        private bool IsOpen(Pood pood)
+        private bool IsOpen(Pood pood, TimeSpan currentTime, DayOfWeek day)
         {
-            var g = pood.Graafik.FirstOrDefault(g => g.Paev == pood.TananePaev);
+            var g = pood.Graafik.FirstOrDefault(g => g.Paev == day);
             if (g == null) return false;
 
             // konverteerime stringid TimeSpan-iks
             if (!TimeSpan.TryParse(g.AvatudAlates, out var alates)) return false;
             if (!TimeSpan.TryParse(g.AvatudKuni, out var kuni)) return false;
 
-            return pood.PraeguneAeg >= alates && pood.PraeguneAeg < kuni;
+            return currentTime >= alates && currentTime < kuni;
         }
-
 
         // meetod poe seisundi muutuse teate koostamiseks
         private string GetStateChangeMessage(bool wasOpen, bool isOpen)
